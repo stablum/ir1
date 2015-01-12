@@ -2,42 +2,40 @@
 import sys
 import pandas as pd
 
-def precisions(qrels, results, k):
-    ret = []
-    results = results[results["rank"]<=k]
-    merged = qrels.merge(results, how="inner", on=["query","doc"])
-    useful = merged[["query","doc","rank","relevant"]].sort(columns=["query","rank"])
-    queries = sorted(list(set(useful["query"])))
-    for curr_query in queries:
-        print "query", curr_query
-        curr_query_data = useful[useful["query"] == curr_query]
-        ranks = set(curr_query_data["rank"])
-        max_rank = max(ranks)
-        
-        total = 0
-        relevant_count = 0
-        for curr_rank in range(max_rank+1) :
-            if curr_rank in ranks:
-                row = curr_query_data[useful["rank"] == curr_rank]
-                if row.iloc[0]["relevant"]:
-                    relevant_count = relevant_count + 1
-            total = total + 1
-            precision = float(relevant_count)/float(total)
-            print row.iloc[0]["query"],row.iloc[0]["rank"],precision
-            row["precision"] = precision
+def evaluation_measures(qrels, results, k):
+
+    #results = results[results["rank"]<=k]
+    merged = qrels.merge(results, how="inner", on=["q","doc"])
+    useful = merged[["q","doc","k","relevant"]].sort(columns=["q","k"]).set_index('q')
+    useful['auto_increment'] = True
+    num_relevant = useful.groupby(level=0).sum()
+    qs = sorted(list(set(useful.index)))
+    num_relevant = useful.groupby(level=0).sum()[["relevant","auto_increment"]]
+    num_relevant.columns=["total_relevant","total"]
+
+    # em: evaluation measures
+    em = useful[['relevant','auto_increment']].groupby(level=0).cumsum()
+    em.columns = ['relevant_at_k','k']
+    em = em.join(num_relevant)
+    em['precision_at_k'] = em.relevant_at_k.astype('double') / em.k
+    em['recall'] = em.relevant_at_k.astype('double') / em.total_relevant
+    
+    ret = em.groupby(level=0).mean()[['precision_at_k']].rename(columns={'precision_at_k':'average_precision'})
+    ret = ret.join(em[em.k == k][['precision_at_k']].rename(columns={'precision_at_k':'precision_at_'+str(k)}))
+    
     
     return ret
-    
+
 def main(qrels_filename, results_filename):
     qrels = pd.read_csv(qrels_filename,delim_whitespace=True,header=None)
     qrels['relevant'] = (qrels.iloc[:,3] > 0)
-    qrels.columns = ['query','something','doc','relevance', 'relevant']
+    qrels.columns = ['q','something','doc','relevance', 'relevant']
 
     results = pd.read_csv(results_filename,delim_whitespace=True,header=None)
-    results.columns = ['query','not_used','doc','rank','other','algo']
+    results.columns = ['q','not_used','doc','k','other','algo']
 
     k = 10
-    print "precisions", precisions(qrels, results,k)
+    print evaluation_measures(qrels, results, k)
     
 if __name__ == "__main__":
     if len(sys.argv) <= 2:
