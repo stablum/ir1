@@ -2,6 +2,7 @@
 import sys
 import pandas as pd
 import numpy as np
+import re
 
 def evaluation_measures(qrels, results, k):
 
@@ -51,9 +52,14 @@ def main(qrels_filename, results_filename):
     results.columns = ['q','not_used','doc','k','other','algo']
     results.k = results.k + 1
     k = 10
-    print evaluation_measures(qrels, results, k)
+    evaluations = evaluation_measures(qrels, results, k)
+    print evaluations
+    evaluations_filename = re.sub(r'(\.txt)?$','_evaluations.csv', results_filename)
+    print("writing evaluations to file "+evaluations_filename)
+    evaluations.to_csv(evaluations_filename,header=True)
     
 if __name__ == "__main__":
     if len(sys.argv) <= 2:
         print "usage:%s qrels_filename results_filename\n"
+        sys.exit(1)
     main(sys.argv[1],sys.argv[2])
